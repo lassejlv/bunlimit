@@ -32,7 +32,7 @@ function Home() {
               Get Started
             </Link>
             <a
-              href='https://github.com/yourusername/bunlimit'
+              href='https://github.com/lassejlv/bunlimit'
               target='_blank'
               rel='noopener noreferrer'
               className='px-6 py-3 rounded-lg border border-fd-border font-medium hover:bg-fd-muted/50 transition-colors'
