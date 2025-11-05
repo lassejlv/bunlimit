@@ -1,7 +1,7 @@
-import type { RedisClient } from 'bun'
+import type { RedisAdapter } from '../adapters/types.ts'
 import type { RatelimitResponse } from '../types.ts'
 
-export async function fixedWindow(redis: RedisClient, key: string, limit: number, window: number): Promise<RatelimitResponse> {
+export async function fixedWindow(redis: RedisAdapter, key: string, limit: number, window: number): Promise<RatelimitResponse> {
   const now = Date.now()
   const windowStart = Math.floor(now / (window * 1000)) * (window * 1000)
   const windowKey = `${key}:${windowStart}`

@@ -1,16 +1,22 @@
 import type { RatelimitConfig, RatelimitResponse, MultiRatelimitResponse } from './types.ts'
+import type { RedisAdapter } from './adapters/types.ts'
+import { BunRedisAdapter } from './adapters/bun.ts'
 import { fixedWindow } from './algorithms/fixed-window.ts'
 import { slidingWindow } from './algorithms/sliding-window.ts'
 import { tokenBucket } from './algorithms/token-bucket.ts'
 
 export class Ratelimit {
-  private redis
+  private adapter: RedisAdapter
   private limiter
   private prefix
   private analytics
 
   constructor(config: RatelimitConfig) {
-    this.redis = config.redis
+    if (!config.adapter && !config.redis) {
+      throw new Error('Either adapter or redis must be provided')
+    }
+
+    this.adapter = config.adapter ?? new BunRedisAdapter(config.redis!)
     this.limiter = config.limiter
     this.prefix = config.prefix ?? 'ratelimit'
     this.analytics = config.analytics ?? false
@@ -23,13 +29,13 @@ export class Ratelimit {
 
     switch (this.limiter.type) {
       case 'fixed-window':
-        result = await fixedWindow(this.redis, key, this.limiter.limit, this.limiter.window)
+        result = await fixedWindow(this.adapter, key, this.limiter.limit, this.limiter.window)
         break
       case 'sliding-window':
-        result = await slidingWindow(this.redis, key, this.limiter.limit, this.limiter.window)
+        result = await slidingWindow(this.adapter, key, this.limiter.limit, this.limiter.window)
         break
       case 'token-bucket':
-        result = await tokenBucket(this.redis, key, this.limiter.limit, this.limiter.window, this.limiter.refillRate ?? this.limiter.limit / this.limiter.window)
+        result = await tokenBucket(this.adapter, key, this.limiter.limit, this.limiter.window, this.limiter.refillRate ?? this.limiter.limit / this.limiter.window)
         break
     }
 
@@ -56,10 +62,10 @@ export class Ratelimit {
 
   async reset(identifier: string): Promise<void> {
     const pattern = `${this.prefix}:${identifier}*`
-    const keys = await this.redis.keys(pattern)
+    const keys = await this.adapter.keys(pattern)
 
     if (keys.length > 0) {
-      await this.redis.del(...keys)
+      await this.adapter.del(...keys)
     }
   }
 
@@ -72,8 +78,8 @@ export class Ratelimit {
     const analyticsKey = `${this.prefix}:analytics:${identifier}`
     const field = success ? 'allowed' : 'denied'
 
-    await this.redis.hincrby(analyticsKey, field, 1)
-    await this.redis.expire(analyticsKey, 86400)
+    await this.adapter.hincrby(analyticsKey, field, 1)
+    await this.adapter.expire(analyticsKey, 86400)
   }
 
   async getAnalytics(identifier: string): Promise<{
@@ -85,7 +91,7 @@ export class Ratelimit {
     }
 
     const analyticsKey = `${this.prefix}:analytics:${identifier}`
-    const [allowed, denied] = await this.redis.hmget(analyticsKey, ['allowed', 'denied'])
+    const [allowed, denied] = await this.adapter.hmget(analyticsKey, ['allowed', 'denied'])
 
     return {
       allowed: allowed ? parseInt(allowed, 10) : 0,

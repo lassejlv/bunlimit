@@ -1,7 +1,9 @@
 import type { RedisClient } from 'bun'
+import type { RedisAdapter } from './adapters/types.ts'
 
 export interface RatelimitConfig {
-  redis: RedisClient
+  redis?: RedisClient
+  adapter?: RedisAdapter
   limiter: Algorithm
   prefix?: string
   analytics?: boolean

@@ -1,7 +1,7 @@
-import type { RedisClient } from 'bun'
+import type { RedisAdapter } from '../adapters/types.ts'
 import type { RatelimitResponse } from '../types.ts'
 
-export async function tokenBucket(redis: RedisClient, key: string, limit: number, window: number, refillRate: number): Promise<RatelimitResponse> {
+export async function tokenBucket(redis: RedisAdapter, key: string, limit: number, window: number, refillRate: number): Promise<RatelimitResponse> {
   const now = Date.now()
   const bucketKey = `${key}:bucket`
   const timestampKey = `${key}:timestamp`

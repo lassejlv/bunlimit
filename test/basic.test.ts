@@ -127,6 +127,7 @@ describe('Multi-Limit', () => {
 
 describe('Analytics', () => {
   test('should track allowed and denied requests', async () => {
+    const uniqueId = `user-11-${Date.now()}`
     const ratelimit = new Ratelimit({
       redis,
       limiter: fixedWindow(2, 10),
@@ -134,11 +135,11 @@ describe('Analytics', () => {
       analytics: true,
     })
 
-    await ratelimit.limit('user-11')
-    await ratelimit.limit('user-11')
-    await ratelimit.limit('user-11')
+    await ratelimit.limit(uniqueId)
+    await ratelimit.limit(uniqueId)
+    await ratelimit.limit(uniqueId)
 
-    const stats = await ratelimit.getAnalytics('user-11')
+    const stats = await ratelimit.getAnalytics(uniqueId)
     expect(stats?.allowed).toBe(2)
     expect(stats?.denied).toBe(1)
   })

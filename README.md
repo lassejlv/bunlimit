@@ -5,6 +5,7 @@ A simple and powerful rate limiting library for Bun, using Bun's native Redis cl
 ## Features
 
 - 🚀 Built for Bun's native Redis client
+- 🔌 Adapter API for ioredis, node-redis, and custom clients
 - 🎯 Multiple rate limiting algorithms (Fixed Window, Sliding Window, Token Bucket)
 - 📊 Optional analytics tracking
 - 🔄 Multi-identifier rate limiting
@@ -18,6 +19,8 @@ bun add bunlimit
 ```
 
 ## Quick Start
+
+### Using Bun's Redis Client
 
 ```typescript
 import { RedisClient } from 'bun'
@@ -36,6 +39,39 @@ const { success, limit, remaining, reset } = await ratelimit.limit('user-123')
 if (!success) {
   console.log('Rate limit exceeded!')
 }
+```
+
+### Using ioredis
+
+```typescript
+import Redis from 'ioredis'
+import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new Redis()
+
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+
+const { success } = await ratelimit.limit('user-123')
+```
+
+### Using node-redis
+
+```typescript
+import { createClient } from 'redis'
+import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = createClient()
+await redis.connect()
+
+const ratelimit = new Ratelimit({
+  adapter: new NodeRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+
+const { success } = await ratelimit.limit('user-123')
 ```
 
 ## Algorithms
@@ -182,7 +218,8 @@ new Ratelimit(config: RatelimitConfig)
 
 **Config Options:**
 
-- `redis`: RedisClient instance (required)
+- `redis`: RedisClient instance from Bun (optional, either this or `adapter` required)
+- `adapter`: RedisAdapter instance for custom Redis clients (optional, either this or `redis` required)
 - `limiter`: Algorithm configuration (required)
 - `prefix`: Key prefix for Redis (default: "ratelimit")
 - `analytics`: Enable analytics tracking (default: false)
@@ -238,6 +275,113 @@ Get analytics for an identifier (requires `analytics: true`).
 - `limit`: Maximum number of tokens
 - `window`: Time window in seconds
 - `refillRate`: Tokens per second (default: limit / window)
+
+## Adapters
+
+### Built-in Adapters
+
+#### `BunRedisAdapter`
+
+For Bun's native Redis client:
+
+```typescript
+import { RedisClient } from 'bun'
+import { Ratelimit, BunRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new RedisClient('redis://localhost:6379')
+
+const ratelimit = new Ratelimit({
+  adapter: new BunRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### `IoRedisAdapter`
+
+For ioredis:
+
+```typescript
+import Redis from 'ioredis'
+import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new Redis({
+  host: 'localhost',
+  port: 6379,
+})
+
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### `NodeRedisAdapter`
+
+For node-redis (v4+):
+
+```typescript
+import { createClient } from 'redis'
+import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = createClient()
+await redis.connect()
+
+const ratelimit = new Ratelimit({
+  adapter: new NodeRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+### Custom Adapters
+
+You can create your own adapter by implementing the `RedisAdapter` interface:
+
+```typescript
+import type { RedisAdapter } from 'bunlimit'
+
+class MyCustomAdapter implements RedisAdapter {
+  async incr(key: string): Promise<number> {
+    // Your implementation
+  }
+
+  async get(key: string): Promise<string | null> {
+    // Your implementation
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    // Your implementation
+  }
+
+  async expire(key: string, seconds: number): Promise<void> {
+    // Your implementation
+  }
+
+  async del(...keys: string[]): Promise<void> {
+    // Your implementation
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    // Your implementation
+  }
+
+  async hincrby(key: string, field: string, increment: number): Promise<number> {
+    // Your implementation
+  }
+
+  async hmget(key: string, fields: string[]): Promise<(string | null)[]> {
+    // Your implementation
+  }
+
+  async hmset(key: string, data: string[]): Promise<void> {
+    // Your implementation
+  }
+}
+
+const ratelimit = new Ratelimit({
+  adapter: new MyCustomAdapter(),
+  limiter: fixedWindow(10, 60),
+})
+```
 
 ## License
 
