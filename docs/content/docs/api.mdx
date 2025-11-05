@@ -294,6 +294,24 @@ await redis.connect()
 const adapter = new NodeRedisAdapter(redis)
 ```
 
+### DenoKvAdapter
+
+Adapter for Deno KV.
+
+```typescript
+new DenoKvAdapter(kv: Deno.Kv)
+```
+
+**Example:**
+
+```typescript
+import { openKv } from '@deno/kv'
+import { DenoKvAdapter } from 'bunlimit'
+
+const kv = await openKv('http://localhost:4512')
+const adapter = new DenoKvAdapter(kv)
+```
+
 ## Types
 
 ### RedisAdapter

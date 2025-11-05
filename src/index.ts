@@ -1,5 +1,5 @@
 export { Ratelimit } from './ratelimit.ts'
 export { fixedWindow, slidingWindow, tokenBucket } from './presets.ts'
-export { BunRedisAdapter, IoRedisAdapter, NodeRedisAdapter } from './adapters/index.ts'
+export { BunRedisAdapter, IoRedisAdapter, NodeRedisAdapter, DenoKvAdapter } from './adapters/index.ts'
 export type { RatelimitConfig, RatelimitResponse, MultiRatelimitResponse, Algorithm } from './types.ts'
 export type { RedisAdapter } from './adapters/types.ts'

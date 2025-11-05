@@ -4,109 +4,172 @@ description: Use different Redis clients with bunlimit
 icon: Plug
 ---
 
+import { Accordion, Accordions } from 'fumadocs-ui/components/accordion'
+
 bunlimit supports multiple Redis clients through its adapter API. This allows you to use your preferred Redis client while maintaining the same simple rate limiting interface.
 
 ## Built-in Adapters
 
-### BunRedisAdapter
+<Accordions>
+  <Accordion title='BunRedisAdapter'>
+    Use Bun's native Redis client for maximum performance in Bun environments.
 
-Use Bun's native Redis client for maximum performance in Bun environments.
+    ```typescript
+    import { RedisClient } from 'bun'
+    import { Ratelimit, BunRedisAdapter, fixedWindow } from 'bunlimit'
 
-```typescript
-import { RedisClient } from 'bun'
-import { Ratelimit, BunRedisAdapter, fixedWindow } from 'bunlimit'
+    const redis = new RedisClient('redis://localhost:6379')
 
-const redis = new RedisClient('redis://localhost:6379')
+    const ratelimit = new Ratelimit({
+      adapter: new BunRedisAdapter(redis),
+      limiter: fixedWindow(10, 60),
+    })
+    ```
 
-const ratelimit = new Ratelimit({
-  adapter: new BunRedisAdapter(redis),
-  limiter: fixedWindow(10, 60),
-})
-```
+    **Or use the shorthand:**
 
-**Or use the shorthand:**
+    ```typescript
+    const ratelimit = new Ratelimit({
+      redis, // Automatically creates BunRedisAdapter
+      limiter: fixedWindow(10, 60),
+    })
+    ```
 
-```typescript
-const ratelimit = new Ratelimit({
-  redis, // Automatically creates BunRedisAdapter
-  limiter: fixedWindow(10, 60),
-})
-```
+    ### Features
 
-#### Features
+    - ⚡ **Fastest performance** - Native Bun implementation
+    - 🎯 **Zero overhead** - Direct method calls
+    - 🔧 **Simple setup** - Works out of the box
 
-- ⚡ **Fastest performance** - Native Bun implementation
-- 🎯 **Zero overhead** - Direct method calls
-- 🔧 **Simple setup** - Works out of the box
+  </Accordion>
 
-### IoRedisAdapter
+  <Accordion title='IoRedisAdapter'>
+    Perfect for projects already using ioredis.
 
-Perfect for projects already using ioredis.
+    ```typescript
+    import Redis from 'ioredis'
+    import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
 
-```typescript
-import Redis from 'ioredis'
-import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+    const redis = new Redis({
+      host: 'localhost',
+      port: 6379,
+      password: 'your-password',
+    })
 
-const redis = new Redis({
-  host: 'localhost',
-  port: 6379,
-  password: 'your-password',
-})
+    const ratelimit = new Ratelimit({
+      adapter: new IoRedisAdapter(redis),
+      limiter: fixedWindow(10, 60),
+    })
+    ```
 
-const ratelimit = new Ratelimit({
-  adapter: new IoRedisAdapter(redis),
-  limiter: fixedWindow(10, 60),
-})
-```
+    ### Supported Features
 
-#### Supported Features
+    - ✅ Redis Cluster
+    - ✅ Redis Sentinel
+    - ✅ Connection pools
+    - ✅ TLS/SSL
+    - ✅ All ioredis options
 
-- ✅ Redis Cluster
-- ✅ Redis Sentinel
-- ✅ Connection pools
-- ✅ TLS/SSL
-- ✅ All ioredis options
+    ### Example with Cluster
 
-#### Example with Cluster
+    ```typescript
+    const redis = new Redis.Cluster([
+      { host: 'localhost', port: 6380 },
+      { host: 'localhost', port: 6381 },
+    ])
 
-```typescript
-const redis = new Redis.Cluster([
-  { host: 'localhost', port: 6380 },
-  { host: 'localhost', port: 6381 },
-])
+    const ratelimit = new Ratelimit({
+      adapter: new IoRedisAdapter(redis),
+      limiter: slidingWindow(100, 60),
+    })
+    ```
 
-const ratelimit = new Ratelimit({
-  adapter: new IoRedisAdapter(redis),
-  limiter: slidingWindow(100, 60),
-})
-```
+  </Accordion>
 
-### NodeRedisAdapter
+  <Accordion title='NodeRedisAdapter'>
+    For projects using the official node-redis client (v4+).
 
-For projects using the official node-redis client (v4+).
+    ```typescript
+    import { createClient } from 'redis'
+    import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
 
-```typescript
-import { createClient } from 'redis'
-import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
+    const redis = createClient({
+      url: 'redis://localhost:6379',
+    })
 
-const redis = createClient({
-  url: 'redis://localhost:6379',
-})
+    await redis.connect()
 
-await redis.connect()
+    const ratelimit = new Ratelimit({
+      adapter: new NodeRedisAdapter(redis),
+      limiter: fixedWindow(10, 60),
+    })
+    ```
 
-const ratelimit = new Ratelimit({
-  adapter: new NodeRedisAdapter(redis),
-  limiter: fixedWindow(10, 60),
-})
-```
+    ### Features
 
-#### Features
+    - ✅ Official Redis client
+    - ✅ TypeScript support
+    - ✅ Modern async/await API
+    - ✅ Cluster support
 
-- ✅ Official Redis client
-- ✅ TypeScript support
-- ✅ Modern async/await API
-- ✅ Cluster support
+  </Accordion>
+
+  <Accordion title='DenoKvAdapter'>
+    Use Deno KV as a backend for rate limiting. Perfect for Deno Deploy or self-hosted Deno KV instances.
+
+    ```typescript
+    import { openKv } from '@deno/kv'
+    import { Ratelimit, DenoKvAdapter, fixedWindow } from 'bunlimit'
+
+    const kv = await openKv('http://localhost:4512')
+
+    const ratelimit = new Ratelimit({
+      adapter: new DenoKvAdapter(kv),
+      limiter: fixedWindow(10, 60),
+    })
+    ```
+
+    ### Features
+
+    - ✅ Works with Deno Deploy
+    - ✅ Self-hosted Deno KV support
+    - ✅ Built-in ACID transactions
+    - ✅ No Redis required
+
+    ### Self-Hosted Setup
+
+    Run a self-hosted Deno KV instance:
+
+    ```bash
+    docker run -it --init -p 4512:4512 -v ./data:/data \
+      ghcr.io/denoland/denokv --sqlite-path /data/denokv.sqlite \
+      serve --access-token <random-token>
+    ```
+
+    Then connect with the access token:
+
+    ```typescript
+    const kv = await openKv('http://localhost:4512', {
+      headers: {
+        Authorization: `Bearer ${process.env.DENO_KV_ACCESS_TOKEN}`,
+      },
+    })
+    ```
+
+    Learn more at [github.com/denoland/denokv](https://github.com/denoland/denokv)
+
+  </Accordion>
+</Accordions>
+
+## Adapter Comparison
+
+| Adapter              | Best For                  | Performance    | Features          |
+| -------------------- | ------------------------- | -------------- | ----------------- |
+| **BunRedisAdapter**  | Bun projects              | ⚡⚡⚡ Fastest | Native, optimized |
+| **IoRedisAdapter**   | Existing ioredis projects | ⚡⚡ Fast      | Cluster, Sentinel |
+| **NodeRedisAdapter** | Node.js projects          | ⚡⚡ Fast      | Official client   |
+| **DenoKvAdapter**    | Deno projects             | ⚡⚡ Fast      | No Redis needed   |
+| **Custom**           | Special requirements      | Varies         | Full control      |
 
 ## Custom Adapters
 
@@ -198,21 +261,11 @@ class MemoryAdapter implements RedisAdapter {
   }
 }
 
-// Use it
 const ratelimit = new Ratelimit({
   adapter: new MemoryAdapter(),
   limiter: fixedWindow(10, 60),
 })
 ```
-
-## Adapter Comparison
-
-| Adapter              | Best For                  | Performance    | Features          |
-| -------------------- | ------------------------- | -------------- | ----------------- |
-| **BunRedisAdapter**  | Bun projects              | ⚡⚡⚡ Fastest | Native, optimized |
-| **IoRedisAdapter**   | Existing ioredis projects | ⚡⚡ Fast      | Cluster, Sentinel |
-| **NodeRedisAdapter** | Node.js projects          | ⚡⚡ Fast      | Official client   |
-| **Custom**           | Special requirements      | Varies         | Full control      |
 
 ## Migration Guide
 
@@ -279,6 +332,12 @@ const distributedLimit = new Ratelimit({
   adapter: new IoRedisAdapter(clusterClient),
   limiter: slidingWindow(1000, 60),
 })
+
+// Serverless rate limiting with Deno KV
+const serverlessLimit = new Ratelimit({
+  adapter: new DenoKvAdapter(kv),
+  limiter: tokenBucket(50, 60),
+})
 ```
 
 ## FAQ
@@ -307,4 +366,5 @@ No. All adapters implement the same interface and produce identical rate limitin
 - **Bun projects**: Use `BunRedisAdapter` (or shorthand `redis` option)
 - **Existing ioredis**: Use `IoRedisAdapter`
 - **Node.js with official client**: Use `NodeRedisAdapter`
+- **Deno/Serverless**: Use `DenoKvAdapter`
 - **Special needs**: Create a custom adapter
