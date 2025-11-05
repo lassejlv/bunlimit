@@ -1,0 +1,58 @@
+---
+title: Introduction
+description: A simple and powerful rate limiting library for Bun
+icon: Zap
+---
+
+import { Card, Cards } from 'fumadocs-ui/components/card'
+
+# bunlimit
+
+A simple and powerful rate limiting library for Bun, using Bun's native Redis client. Inspired by Upstash Ratelimit.
+
+## Features
+
+- 🚀 **Built for Bun** - Uses Bun's native Redis client for maximum performance
+- 🔌 **Flexible Adapters** - Support for ioredis, node-redis, and custom clients
+- 🎯 **Multiple Algorithms** - Fixed Window, Sliding Window, and Token Bucket
+- 📊 **Analytics** - Optional request tracking and analytics
+- 🔄 **Multi-Identifier** - Rate limit multiple identifiers at once
+- 💪 **Type-Safe** - Full TypeScript support with complete type definitions
+- ⚡ **Simple API** - Intuitive and easy to use
+
+## Quick Start
+
+Install bunlimit:
+
+```bash
+bun add bunlimit
+```
+
+Basic usage:
+
+```typescript
+import { RedisClient } from 'bun'
+import { Ratelimit, fixedWindow } from 'bunlimit'
+
+const redis = new RedisClient('redis://localhost:6379')
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60), // 10 requests per 60 seconds
+})
+
+const { success, remaining } = await ratelimit.limit('user-123')
+
+if (!success) {
+  throw new Error('Rate limit exceeded')
+}
+```
+
+## Next Steps
+
+<Cards>
+  <Card title='Installation' href='/docs/installation' description='Get started with bunlimit' />
+  <Card title='Algorithms' href='/docs/algorithms' description='Learn about rate limiting algorithms' />
+  <Card title='Adapters' href='/docs/adapters' description='Use different Redis clients' />
+  <Card title='API Reference' href='/docs/api' description='Complete API documentation' />
+</Cards>

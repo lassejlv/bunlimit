@@ -1,0 +1,196 @@
+---
+title: Algorithms
+description: Rate limiting algorithms explained
+icon: Cpu
+---
+
+bunlimit supports three rate limiting algorithms, each with different characteristics and use cases.
+
+## Fixed Window
+
+The simplest algorithm. Divides time into fixed windows and counts requests per window.
+
+```typescript
+import { fixedWindow } from 'bunlimit'
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60), // 10 requests per 60 seconds
+})
+```
+
+### How it works
+
+- Time is divided into fixed windows (e.g., 0-60s, 60-120s)
+- Each window has a counter that increments with each request
+- Counter resets at the start of each new window
+
+### Pros
+
+- ⚡ **Fast** - Simple increment operation
+- 💾 **Memory efficient** - Only stores one counter per window
+- 🎯 **Predictable** - Easy to understand and debug
+
+### Cons
+
+- 🚨 **Burst traffic** - Users can make 2x requests at window boundaries
+- ⏰ **Reset timing** - All limits reset at the same time
+
+### Best for
+
+- Simple rate limiting
+- Low-traffic applications
+- When memory efficiency is important
+
+## Sliding Window
+
+More accurate than fixed window. Uses weighted calculation based on current and previous windows.
+
+```typescript
+import { slidingWindow } from 'bunlimit'
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(10, 60),
+})
+```
+
+### How it works
+
+- Maintains counters for current and previous windows
+- Calculates weighted count based on time position in current window
+- Smooths out the boundary problem of fixed windows
+
+### Formula
+
+```
+weighted_count = previous_count × (1 - progress) + current_count
+```
+
+Where `progress` is how far into the current window we are (0-1).
+
+### Pros
+
+- 🎯 **More accurate** - Prevents burst at boundaries
+- ⚖️ **Smooth distribution** - Better request distribution over time
+- 📊 **Fair** - More consistent user experience
+
+### Cons
+
+- 🐌 **Slightly slower** - Requires reading two windows
+- 💾 **More memory** - Stores two windows per identifier
+
+### Best for
+
+- Production APIs
+- When accuracy matters
+- Preventing abuse at window boundaries
+
+## Token Bucket
+
+Allows bursts while maintaining average rate. Tokens refill over time.
+
+```typescript
+import { tokenBucket } from 'bunlimit'
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: tokenBucket(10, 60, 0.5), // 10 tokens, refills at 0.5/sec
+})
+```
+
+### How it works
+
+- Bucket starts with maximum tokens
+- Each request consumes one token
+- Tokens refill at a constant rate
+- Requests fail when bucket is empty
+
+### Parameters
+
+- `limit` - Maximum tokens in bucket
+- `window` - Time window in seconds
+- `refillRate` - Tokens added per second (default: limit / window)
+
+### Pros
+
+- 🚀 **Allows bursts** - Users can burst up to bucket capacity
+- ⚖️ **Average rate** - Maintains long-term average
+- 🎮 **Flexible** - Good for variable workloads
+
+### Cons
+
+- 🔧 **Complex** - Harder to reason about
+- 💾 **More storage** - Stores tokens and timestamp
+- ⚙️ **Configuration** - Requires tuning refill rate
+
+### Best for
+
+- APIs with bursty traffic
+- Background job processing
+- When flexibility is needed
+
+## Comparison
+
+| Feature            | Fixed Window | Sliding Window | Token Bucket |
+| ------------------ | ------------ | -------------- | ------------ |
+| **Accuracy**       | ⭐⭐         | ⭐⭐⭐         | ⭐⭐⭐       |
+| **Performance**    | ⭐⭐⭐       | ⭐⭐           | ⭐⭐         |
+| **Memory**         | ⭐⭐⭐       | ⭐⭐           | ⭐⭐         |
+| **Burst handling** | ❌           | ⚠️             | ✅           |
+| **Simplicity**     | ⭐⭐⭐       | ⭐⭐           | ⭐           |
+
+## Choosing an Algorithm
+
+### Use Fixed Window when:
+
+- You need maximum performance
+- Memory is constrained
+- Simplicity is important
+- Burst traffic is acceptable
+
+### Use Sliding Window when:
+
+- Accuracy is important
+- You want to prevent boundary abuse
+- You need fair distribution
+- Production API protection
+
+### Use Token Bucket when:
+
+- Traffic is naturally bursty
+- You want to allow short bursts
+- Long-term average rate matters
+- Processing background jobs
+
+## Examples
+
+### API Rate Limiting (Sliding Window)
+
+```typescript
+const apiLimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(100, 60), // 100 req/min
+  prefix: 'api',
+})
+```
+
+### Login Attempts (Fixed Window)
+
+```typescript
+const loginLimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(5, 300), // 5 attempts per 5 minutes
+  prefix: 'login',
+})
+```
+
+### File Uploads (Token Bucket)
+
+```typescript
+const uploadLimit = new Ratelimit({
+  redis,
+  limiter: tokenBucket(10, 3600, 0.1), // 10 uploads, refill slowly
+  prefix: 'upload',
+})
+```

@@ -1,0 +1,371 @@
+---
+title: Usage
+description: Common usage patterns and examples
+icon: Code
+---
+
+## Basic Usage
+
+### Rate Limiting a User
+
+```typescript
+const { success, remaining, reset } = await ratelimit.limit('user-123')
+
+if (!success) {
+  throw new Error(`Rate limit exceeded. Try again at ${new Date(reset)}`)
+}
+
+console.log(`${remaining} requests remaining`)
+```
+
+### HTTP Server Integration
+
+```typescript
+import { RedisClient } from 'bun'
+import { Ratelimit, slidingWindow } from 'bunlimit'
+
+const redis = new RedisClient()
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(100, 60),
+})
+
+Bun.serve({
+  async fetch(req) {
+    const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+    const { success, remaining, reset } = await ratelimit.limit(ip)
+
+    if (!success) {
+      return new Response('Rate limit exceeded', {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': reset.toString(),
+        },
+      })
+    }
+
+    return new Response('Hello World', {
+      headers: {
+        'X-RateLimit-Limit': '100',
+        'X-RateLimit-Remaining': remaining.toString(),
+        'X-RateLimit-Reset': reset.toString(),
+      },
+    })
+  },
+})
+```
+
+## Advanced Features
+
+### Multiple Identifiers
+
+Rate limit multiple users at once:
+
+```typescript
+const results = await ratelimit.multiLimit(['user-1', 'user-2', 'user-3'])
+
+for (const result of results) {
+  console.log(`${result.identifier}: ${result.success ? 'allowed' : 'denied'}`)
+}
+```
+
+### Analytics
+
+Track allowed and denied requests:
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60),
+  analytics: true,
+})
+
+await ratelimit.limit('user-123')
+
+const stats = await ratelimit.getAnalytics('user-123')
+console.log(`Allowed: ${stats?.allowed}, Denied: ${stats?.denied}`)
+```
+
+### Reset Rate Limit
+
+Manually reset a user's rate limit:
+
+```typescript
+await ratelimit.reset('user-123')
+```
+
+### Check Remaining Requests
+
+Get remaining requests without consuming one:
+
+```typescript
+const remaining = await ratelimit.getRemaining('user-123')
+console.log(`${remaining} requests remaining`)
+```
+
+### Handle Rate Limit Exceeded
+
+Execute custom logic when limits are exceeded:
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60),
+  onLimitExceeded: async (identifier, response) => {
+    console.log(`Rate limit exceeded for ${identifier}`)
+
+    // Send notification
+    await sendEmail(identifier, {
+      subject: 'Rate Limit Exceeded',
+      body: `Try again at ${new Date(response.reset)}`,
+    })
+
+    // Log to analytics
+    await analytics.track('rate_limit_exceeded', {
+      user: identifier,
+      reset: response.reset,
+    })
+  },
+})
+```
+
+## Common Patterns
+
+### API Key Rate Limiting
+
+```typescript
+const apiLimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(1000, 3600), // 1000 req/hour
+  prefix: 'api',
+})
+
+async function handleRequest(apiKey: string) {
+  const { success, remaining } = await apiLimit.limit(apiKey)
+
+  if (!success) {
+    throw new Error('API rate limit exceeded')
+  }
+
+  return { remaining }
+}
+```
+
+### Login Attempt Limiting
+
+```typescript
+const loginLimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(5, 300), // 5 attempts per 5 minutes
+  prefix: 'login',
+  onLimitExceeded: async (identifier) => {
+    await logSuspiciousActivity(identifier)
+  },
+})
+
+async function handleLogin(username: string, password: string) {
+  const { success } = await loginLimit.limit(username)
+
+  if (!success) {
+    throw new Error('Too many login attempts. Please try again later.')
+  }
+
+  // Proceed with login
+}
+```
+
+### File Upload Limiting
+
+```typescript
+const uploadLimit = new Ratelimit({
+  redis,
+  limiter: tokenBucket(10, 3600, 0.1), // 10 uploads, slow refill
+  prefix: 'upload',
+})
+
+async function handleUpload(userId: string, file: File) {
+  const { success, remaining } = await uploadLimit.limit(userId)
+
+  if (!success) {
+    throw new Error('Upload limit exceeded')
+  }
+
+  console.log(`${remaining} uploads remaining`)
+  // Process upload
+}
+```
+
+### Per-Route Rate Limiting
+
+```typescript
+const routes = {
+  search: new Ratelimit({
+    redis,
+    limiter: slidingWindow(100, 60), // 100/min
+    prefix: 'route:search',
+  }),
+
+  create: new Ratelimit({
+    redis,
+    limiter: fixedWindow(10, 60), // 10/min
+    prefix: 'route:create',
+  }),
+
+  delete: new Ratelimit({
+    redis,
+    limiter: fixedWindow(5, 60), // 5/min
+    prefix: 'route:delete',
+  }),
+}
+
+async function handleRoute(route: string, userId: string) {
+  const limiter = routes[route]
+  const { success } = await limiter.limit(userId)
+
+  if (!success) {
+    throw new Error(`Rate limit exceeded for ${route}`)
+  }
+}
+```
+
+### Tiered Rate Limiting
+
+```typescript
+const tiers = {
+  free: new Ratelimit({
+    redis,
+    limiter: fixedWindow(100, 3600),
+    prefix: 'tier:free',
+  }),
+
+  pro: new Ratelimit({
+    redis,
+    limiter: fixedWindow(1000, 3600),
+    prefix: 'tier:pro',
+  }),
+
+  enterprise: new Ratelimit({
+    redis,
+    limiter: fixedWindow(10000, 3600),
+    prefix: 'tier:enterprise',
+  }),
+}
+
+async function handleRequest(userId: string, tier: 'free' | 'pro' | 'enterprise') {
+  const limiter = tiers[tier]
+  const { success, remaining } = await limiter.limit(userId)
+
+  return { success, remaining }
+}
+```
+
+### IP-Based Rate Limiting with User Override
+
+```typescript
+const ipLimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(100, 60),
+  prefix: 'ip',
+})
+
+const userLimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(1000, 60),
+  prefix: 'user',
+})
+
+async function checkRateLimit(ip: string, userId?: string) {
+  // Check IP limit first
+  const ipResult = await ipLimit.limit(ip)
+  if (!ipResult.success) {
+    return { success: false, reason: 'IP rate limit exceeded' }
+  }
+
+  // If authenticated, check user limit
+  if (userId) {
+    const userResult = await userLimit.limit(userId)
+    if (!userResult.success) {
+      return { success: false, reason: 'User rate limit exceeded' }
+    }
+  }
+
+  return { success: true }
+}
+```
+
+## Best Practices
+
+### 1. Use Appropriate Prefixes
+
+Always use descriptive prefixes to avoid key collisions:
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60),
+  prefix: 'api:v1:users', // Clear and specific
+})
+```
+
+### 2. Return Rate Limit Headers
+
+Help clients understand their limits:
+
+```typescript
+return new Response(data, {
+  headers: {
+    'X-RateLimit-Limit': limit.toString(),
+    'X-RateLimit-Remaining': remaining.toString(),
+    'X-RateLimit-Reset': reset.toString(),
+  },
+})
+```
+
+### 3. Handle Errors Gracefully
+
+```typescript
+try {
+  const { success } = await ratelimit.limit(userId)
+  if (!success) {
+    return errorResponse(429, 'Rate limit exceeded')
+  }
+} catch (error) {
+  // Log error but don't block request
+  console.error('Rate limit check failed:', error)
+  // Optionally allow request to proceed
+}
+```
+
+### 4. Use Analytics for Monitoring
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: slidingWindow(100, 60),
+  analytics: true,
+})
+
+// Periodically check analytics
+setInterval(async () => {
+  const stats = await ratelimit.getAnalytics('api-key-123')
+  if (stats && stats.denied > 100) {
+    await alertTeam('High rate limit denials detected')
+  }
+}, 60000)
+```
+
+### 5. Test Your Limits
+
+```typescript
+// Test rate limiting in development
+if (process.env.NODE_ENV === 'development') {
+  const results = []
+  for (let i = 0; i < 12; i++) {
+    const result = await ratelimit.limit('test-user')
+    results.push(result)
+  }
+  console.log('Rate limit test:', results)
+}
+```

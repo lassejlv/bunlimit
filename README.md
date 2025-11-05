@@ -206,6 +206,36 @@ const remaining = await ratelimit.getRemaining('user-123')
 console.log(`${remaining} requests remaining`)
 ```
 
+### Handle Rate Limit Exceeded
+
+Use the `onLimitExceeded` callback to perform actions when users exceed their rate limit:
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60),
+  onLimitExceeded: async (identifier, response) => {
+    console.log(`Rate limit exceeded for ${identifier}`)
+    console.log(`Try again at ${new Date(response.reset)}`)
+
+    await sendNotification(identifier, {
+      message: 'You have exceeded your rate limit',
+      resetAt: response.reset,
+    })
+  },
+})
+
+const { success } = await ratelimit.limit('user-123')
+```
+
+**Common use cases:**
+
+- Send email/SMS notifications
+- Log to analytics systems
+- Trigger alerts for suspicious activity
+- Update user dashboards
+- Queue background jobs
+
 ## API Reference
 
 ### `Ratelimit`
@@ -223,6 +253,7 @@ new Ratelimit(config: RatelimitConfig)
 - `limiter`: Algorithm configuration (required)
 - `prefix`: Key prefix for Redis (default: "ratelimit")
 - `analytics`: Enable analytics tracking (default: false)
+- `onLimitExceeded`: Callback function triggered when rate limit is exceeded (optional)
 
 #### Methods
 

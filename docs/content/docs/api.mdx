@@ -1,0 +1,426 @@
+---
+title: API Reference
+description: Complete API documentation
+icon: Book
+---
+
+## Ratelimit
+
+The main class for rate limiting.
+
+### Constructor
+
+```typescript
+new Ratelimit(config: RatelimitConfig)
+```
+
+#### RatelimitConfig
+
+| Property          | Type           | Required | Description                         |
+| ----------------- | -------------- | -------- | ----------------------------------- |
+| `redis`           | `RedisClient`  | No\*     | Bun Redis client instance           |
+| `adapter`         | `RedisAdapter` | No\*     | Custom Redis adapter                |
+| `limiter`         | `Algorithm`    | Yes      | Rate limiting algorithm             |
+| `prefix`          | `string`       | No       | Key prefix (default: `"ratelimit"`) |
+| `analytics`       | `boolean`      | No       | Enable analytics (default: `false`) |
+| `onLimitExceeded` | `Function`     | No       | Callback when limit exceeded        |
+
+\*Either `redis` or `adapter` must be provided.
+
+#### Example
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis: new RedisClient(),
+  limiter: fixedWindow(10, 60),
+  prefix: 'api',
+  analytics: true,
+  onLimitExceeded: async (identifier, response) => {
+    console.log(`Limit exceeded for ${identifier}`)
+  },
+})
+```
+
+### Methods
+
+#### limit()
+
+Rate limit a single identifier.
+
+```typescript
+limit(identifier: string): Promise<RatelimitResponse>
+```
+
+**Parameters:**
+
+- `identifier` - Unique identifier (user ID, IP address, API key, etc.)
+
+**Returns:**
+
+```typescript
+interface RatelimitResponse {
+  success: boolean // Whether request is allowed
+  limit: number // Maximum requests allowed
+  remaining: number // Requests remaining
+  reset: number // Timestamp when limit resets (ms)
+  pending: Promise<unknown> // Internal promise
+}
+```
+
+**Example:**
+
+```typescript
+const { success, remaining, reset } = await ratelimit.limit('user-123')
+
+if (!success) {
+  throw new Error(`Rate limit exceeded. Try again at ${new Date(reset)}`)
+}
+```
+
+#### multiLimit()
+
+Rate limit multiple identifiers at once.
+
+```typescript
+multiLimit(identifiers: string[]): Promise<MultiRatelimitResponse[]>
+```
+
+**Parameters:**
+
+- `identifiers` - Array of unique identifiers
+
+**Returns:**
+
+```typescript
+interface MultiRatelimitResponse {
+  identifier: string // The identifier
+  success: boolean // Whether request is allowed
+  limit: number // Maximum requests allowed
+  remaining: number // Requests remaining
+  reset: number // Timestamp when limit resets (ms)
+}
+```
+
+**Example:**
+
+```typescript
+const results = await ratelimit.multiLimit(['user-1', 'user-2', 'user-3'])
+
+for (const result of results) {
+  console.log(`${result.identifier}: ${result.success ? 'allowed' : 'denied'}`)
+}
+```
+
+#### reset()
+
+Reset rate limit for an identifier.
+
+```typescript
+reset(identifier: string): Promise<void>
+```
+
+**Parameters:**
+
+- `identifier` - Identifier to reset
+
+**Example:**
+
+```typescript
+await ratelimit.reset('user-123')
+```
+
+#### getRemaining()
+
+Get remaining requests for an identifier.
+
+```typescript
+getRemaining(identifier: string): Promise<number>
+```
+
+**Parameters:**
+
+- `identifier` - Identifier to check
+
+**Returns:**
+
+- Number of remaining requests
+
+**Example:**
+
+```typescript
+const remaining = await ratelimit.getRemaining('user-123')
+console.log(`${remaining} requests remaining`)
+```
+
+#### getAnalytics()
+
+Get analytics for an identifier (requires `analytics: true`).
+
+```typescript
+getAnalytics(identifier: string): Promise<{ allowed: number; denied: number } | null>
+```
+
+**Parameters:**
+
+- `identifier` - Identifier to get analytics for
+
+**Returns:**
+
+- Object with `allowed` and `denied` counts, or `null` if analytics disabled
+
+**Example:**
+
+```typescript
+const stats = await ratelimit.getAnalytics('user-123')
+if (stats) {
+  console.log(`Allowed: ${stats.allowed}, Denied: ${stats.denied}`)
+}
+```
+
+## Algorithm Presets
+
+### fixedWindow()
+
+Create a fixed window algorithm.
+
+```typescript
+fixedWindow(limit: number, window: number): Algorithm
+```
+
+**Parameters:**
+
+- `limit` - Maximum number of requests
+- `window` - Time window in seconds
+
+**Example:**
+
+```typescript
+const limiter = fixedWindow(10, 60) // 10 requests per 60 seconds
+```
+
+### slidingWindow()
+
+Create a sliding window algorithm.
+
+```typescript
+slidingWindow(limit: number, window: number): Algorithm
+```
+
+**Parameters:**
+
+- `limit` - Maximum number of requests
+- `window` - Time window in seconds
+
+**Example:**
+
+```typescript
+const limiter = slidingWindow(10, 60) // 10 requests per 60 seconds
+```
+
+### tokenBucket()
+
+Create a token bucket algorithm.
+
+```typescript
+tokenBucket(limit: number, window: number, refillRate?: number): Algorithm
+```
+
+**Parameters:**
+
+- `limit` - Maximum number of tokens
+- `window` - Time window in seconds
+- `refillRate` - Tokens per second (default: `limit / window`)
+
+**Example:**
+
+```typescript
+const limiter = tokenBucket(10, 60, 0.5) // 10 tokens, refills at 0.5/sec
+```
+
+## Adapters
+
+### BunRedisAdapter
+
+Adapter for Bun's native Redis client.
+
+```typescript
+new BunRedisAdapter(client: RedisClient)
+```
+
+**Example:**
+
+```typescript
+import { RedisClient } from 'bun'
+import { BunRedisAdapter } from 'bunlimit'
+
+const redis = new RedisClient('redis://localhost:6379')
+const adapter = new BunRedisAdapter(redis)
+```
+
+### IoRedisAdapter
+
+Adapter for ioredis.
+
+```typescript
+new IoRedisAdapter(client: Redis)
+```
+
+**Example:**
+
+```typescript
+import Redis from 'ioredis'
+import { IoRedisAdapter } from 'bunlimit'
+
+const redis = new Redis()
+const adapter = new IoRedisAdapter(redis)
+```
+
+### NodeRedisAdapter
+
+Adapter for node-redis (v4+).
+
+```typescript
+new NodeRedisAdapter(client: RedisClientType)
+```
+
+**Example:**
+
+```typescript
+import { createClient } from 'redis'
+import { NodeRedisAdapter } from 'bunlimit'
+
+const redis = createClient()
+await redis.connect()
+const adapter = new NodeRedisAdapter(redis)
+```
+
+## Types
+
+### RedisAdapter
+
+Interface for creating custom adapters.
+
+```typescript
+interface RedisAdapter {
+  incr(key: string): Promise<number>
+  get(key: string): Promise<string | null>
+  set(key: string, value: string): Promise<void>
+  expire(key: string, seconds: number): Promise<void>
+  del(...keys: string[]): Promise<void>
+  keys(pattern: string): Promise<string[]>
+  hincrby(key: string, field: string, increment: number): Promise<number>
+  hmget(key: string, fields: string[]): Promise<(string | null)[]>
+  hmset(key: string, data: string[]): Promise<void>
+}
+```
+
+### Algorithm
+
+Rate limiting algorithm configuration.
+
+```typescript
+interface Algorithm {
+  type: 'fixed-window' | 'sliding-window' | 'token-bucket'
+  limit: number
+  window: number
+  refillRate?: number // Only for token-bucket
+}
+```
+
+### Callbacks
+
+#### onLimitExceeded
+
+Callback function triggered when rate limit is exceeded.
+
+```typescript
+type OnLimitExceeded = (identifier: string, response: RatelimitResponse) => void | Promise<void>
+```
+
+**Example:**
+
+```typescript
+const callback: OnLimitExceeded = async (identifier, response) => {
+  console.log(`Rate limit exceeded for ${identifier}`)
+  console.log(`Reset at: ${new Date(response.reset)}`)
+  await sendNotification(identifier)
+}
+```
+
+## Error Handling
+
+### Common Errors
+
+#### Missing Redis Configuration
+
+```typescript
+// ❌ Error: Either adapter or redis must be provided
+new Ratelimit({
+  limiter: fixedWindow(10, 60),
+})
+```
+
+```typescript
+// ✅ Correct
+new Ratelimit({
+  redis: new RedisClient(),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### Connection Errors
+
+```typescript
+try {
+  const result = await ratelimit.limit('user-123')
+} catch (error) {
+  if (error.code === 'ERR_REDIS_CONNECTION_CLOSED') {
+    console.error('Redis connection closed')
+  } else {
+    console.error('Unexpected error:', error)
+  }
+}
+```
+
+## TypeScript
+
+bunlimit is written in TypeScript and provides full type definitions.
+
+### Import Types
+
+```typescript
+import type { RatelimitConfig, RatelimitResponse, MultiRatelimitResponse, Algorithm, RedisAdapter } from 'bunlimit'
+```
+
+### Type-Safe Configuration
+
+```typescript
+const config: RatelimitConfig = {
+  redis: new RedisClient(),
+  limiter: fixedWindow(10, 60),
+  prefix: 'api',
+  analytics: true,
+  onLimitExceeded: async (identifier, response) => {
+    // TypeScript knows the types here
+    console.log(identifier.toUpperCase())
+    console.log(response.reset.toFixed(0))
+  },
+}
+
+const ratelimit = new Ratelimit(config)
+```
+
+### Custom Adapter with Types
+
+```typescript
+import type { RedisAdapter } from 'bunlimit'
+
+class MyAdapter implements RedisAdapter {
+  async incr(key: string): Promise<number> {
+    // Implementation
+    return 1
+  }
+
+  // ... implement other methods
+}
+```

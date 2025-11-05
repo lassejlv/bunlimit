@@ -1,0 +1,310 @@
+---
+title: Adapters
+description: Use different Redis clients with bunlimit
+icon: Plug
+---
+
+bunlimit supports multiple Redis clients through its adapter API. This allows you to use your preferred Redis client while maintaining the same simple rate limiting interface.
+
+## Built-in Adapters
+
+### BunRedisAdapter
+
+Use Bun's native Redis client for maximum performance in Bun environments.
+
+```typescript
+import { RedisClient } from 'bun'
+import { Ratelimit, BunRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new RedisClient('redis://localhost:6379')
+
+const ratelimit = new Ratelimit({
+  adapter: new BunRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+**Or use the shorthand:**
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis, // Automatically creates BunRedisAdapter
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### Features
+
+- ⚡ **Fastest performance** - Native Bun implementation
+- 🎯 **Zero overhead** - Direct method calls
+- 🔧 **Simple setup** - Works out of the box
+
+### IoRedisAdapter
+
+Perfect for projects already using ioredis.
+
+```typescript
+import Redis from 'ioredis'
+import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new Redis({
+  host: 'localhost',
+  port: 6379,
+  password: 'your-password',
+})
+
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### Supported Features
+
+- ✅ Redis Cluster
+- ✅ Redis Sentinel
+- ✅ Connection pools
+- ✅ TLS/SSL
+- ✅ All ioredis options
+
+#### Example with Cluster
+
+```typescript
+const redis = new Redis.Cluster([
+  { host: 'localhost', port: 6380 },
+  { host: 'localhost', port: 6381 },
+])
+
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: slidingWindow(100, 60),
+})
+```
+
+### NodeRedisAdapter
+
+For projects using the official node-redis client (v4+).
+
+```typescript
+import { createClient } from 'redis'
+import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = createClient({
+  url: 'redis://localhost:6379',
+})
+
+await redis.connect()
+
+const ratelimit = new Ratelimit({
+  adapter: new NodeRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+#### Features
+
+- ✅ Official Redis client
+- ✅ TypeScript support
+- ✅ Modern async/await API
+- ✅ Cluster support
+
+## Custom Adapters
+
+Create your own adapter for any Redis client or custom storage backend.
+
+### RedisAdapter Interface
+
+```typescript
+interface RedisAdapter {
+  incr(key: string): Promise<number>
+  get(key: string): Promise<string | null>
+  set(key: string, value: string): Promise<void>
+  expire(key: string, seconds: number): Promise<void>
+  del(...keys: string[]): Promise<void>
+  keys(pattern: string): Promise<string[]>
+  hincrby(key: string, field: string, increment: number): Promise<number>
+  hmget(key: string, fields: string[]): Promise<(string | null)[]>
+  hmset(key: string, data: string[]): Promise<void>
+}
+```
+
+### Example: Memory Adapter
+
+```typescript
+import type { RedisAdapter } from 'bunlimit'
+
+class MemoryAdapter implements RedisAdapter {
+  private store = new Map<string, string>()
+  private expirations = new Map<string, number>()
+
+  async incr(key: string): Promise<number> {
+    const current = parseInt(this.store.get(key) ?? '0', 10)
+    const next = current + 1
+    this.store.set(key, next.toString())
+    return next
+  }
+
+  async get(key: string): Promise<string | null> {
+    this.checkExpiration(key)
+    return this.store.get(key) ?? null
+  }
+
+  async set(key: string, value: string): Promise<void> {
+    this.store.set(key, value)
+  }
+
+  async expire(key: string, seconds: number): Promise<void> {
+    this.expirations.set(key, Date.now() + seconds * 1000)
+  }
+
+  async del(...keys: string[]): Promise<void> {
+    for (const key of keys) {
+      this.store.delete(key)
+      this.expirations.delete(key)
+    }
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    const regex = new RegExp(pattern.replace(/\*/g, '.*'))
+    return Array.from(this.store.keys()).filter((key) => regex.test(key))
+  }
+
+  async hincrby(key: string, field: string, increment: number): Promise<number> {
+    const hash = JSON.parse(this.store.get(key) ?? '{}')
+    hash[field] = (hash[field] ?? 0) + increment
+    this.store.set(key, JSON.stringify(hash))
+    return hash[field]
+  }
+
+  async hmget(key: string, fields: string[]): Promise<(string | null)[]> {
+    const hash = JSON.parse(this.store.get(key) ?? '{}')
+    return fields.map((field) => hash[field]?.toString() ?? null)
+  }
+
+  async hmset(key: string, data: string[]): Promise<void> {
+    const hash = JSON.parse(this.store.get(key) ?? '{}')
+    for (let i = 0; i < data.length; i += 2) {
+      hash[data[i]!] = data[i + 1]
+    }
+    this.store.set(key, JSON.stringify(hash))
+  }
+
+  private checkExpiration(key: string): void {
+    const expiration = this.expirations.get(key)
+    if (expiration && Date.now() > expiration) {
+      this.store.delete(key)
+      this.expirations.delete(key)
+    }
+  }
+}
+
+// Use it
+const ratelimit = new Ratelimit({
+  adapter: new MemoryAdapter(),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+## Adapter Comparison
+
+| Adapter              | Best For                  | Performance    | Features          |
+| -------------------- | ------------------------- | -------------- | ----------------- |
+| **BunRedisAdapter**  | Bun projects              | ⚡⚡⚡ Fastest | Native, optimized |
+| **IoRedisAdapter**   | Existing ioredis projects | ⚡⚡ Fast      | Cluster, Sentinel |
+| **NodeRedisAdapter** | Node.js projects          | ⚡⚡ Fast      | Official client   |
+| **Custom**           | Special requirements      | Varies         | Full control      |
+
+## Migration Guide
+
+### From Direct Redis to Adapter
+
+**Before:**
+
+```typescript
+const ratelimit = new Ratelimit({
+  redis: new RedisClient(),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+**After (explicit adapter):**
+
+```typescript
+const ratelimit = new Ratelimit({
+  adapter: new BunRedisAdapter(new RedisClient()),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+**Note:** The shorthand `redis` option still works and automatically creates a `BunRedisAdapter`.
+
+### From ioredis to bunlimit
+
+```typescript
+import Redis from 'ioredis'
+import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+
+// Your existing ioredis client
+const redis = new Redis()
+
+// Wrap it with bunlimit
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: fixedWindow(100, 60),
+})
+
+// Use in your Express app
+app.use(async (req, res, next) => {
+  const { success } = await ratelimit.limit(req.ip)
+  if (!success) {
+    return res.status(429).send('Too many requests')
+  }
+  next()
+})
+```
+
+## Multiple Adapters
+
+You can use multiple adapters in the same application:
+
+```typescript
+// Fast local rate limiting with Bun Redis
+const localLimit = new Ratelimit({
+  redis: new RedisClient('redis://localhost:6379'),
+  limiter: fixedWindow(100, 60),
+})
+
+// Distributed rate limiting with ioredis cluster
+const distributedLimit = new Ratelimit({
+  adapter: new IoRedisAdapter(clusterClient),
+  limiter: slidingWindow(1000, 60),
+})
+```
+
+## FAQ
+
+### Can I switch adapters without changing code?
+
+Yes! The adapter is configured at initialization. Your rate limiting logic remains the same:
+
+```typescript
+const adapter = getAdapter() // Returns any RedisAdapter
+
+const ratelimit = new Ratelimit({
+  adapter,
+  limiter: fixedWindow(10, 60),
+})
+
+const { success } = await ratelimit.limit('user-123')
+```
+
+### Do adapters affect rate limiting accuracy?
+
+No. All adapters implement the same interface and produce identical rate limiting behavior.
+
+### Which adapter should I use?
+
+- **Bun projects**: Use `BunRedisAdapter` (or shorthand `redis` option)
+- **Existing ioredis**: Use `IoRedisAdapter`
+- **Node.js with official client**: Use `NodeRedisAdapter`
+- **Special needs**: Create a custom adapter

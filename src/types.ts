@@ -7,6 +7,7 @@ export interface RatelimitConfig {
   limiter: Algorithm
   prefix?: string
   analytics?: boolean
+  onLimitExceeded?: (identifier: string, response: RatelimitResponse) => void | Promise<void>
 }
 
 export interface Algorithm {

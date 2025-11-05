@@ -171,3 +171,89 @@ describe('Get Remaining', () => {
     expect(remaining).toBeLessThanOrEqual(4)
   })
 })
+
+describe('onLimitExceeded Callback', () => {
+  test('should trigger callback when limit exceeded', async () => {
+    let callbackTriggered = false
+    let callbackIdentifier = ''
+    let callbackResponse: any = null
+
+    const ratelimit = new Ratelimit({
+      redis,
+      limiter: fixedWindow(1, 10),
+      prefix: 'test:callback:1',
+      onLimitExceeded: (identifier, response) => {
+        callbackTriggered = true
+        callbackIdentifier = identifier
+        callbackResponse = response
+      },
+    })
+
+    await ratelimit.limit('user-14')
+    await ratelimit.limit('user-14')
+
+    expect(callbackTriggered).toBe(true)
+    expect(callbackIdentifier).toBe('user-14')
+    expect(callbackResponse.success).toBe(false)
+    expect(callbackResponse.remaining).toBe(0)
+  })
+
+  test('should not trigger callback when limit not exceeded', async () => {
+    let callbackTriggered = false
+
+    const ratelimit = new Ratelimit({
+      redis,
+      limiter: fixedWindow(5, 10),
+      prefix: 'test:callback:2',
+      onLimitExceeded: () => {
+        callbackTriggered = true
+      },
+    })
+
+    await ratelimit.limit('user-15')
+
+    expect(callbackTriggered).toBe(false)
+  })
+
+  test('should support async callback', async () => {
+    const notifications: string[] = []
+
+    const ratelimit = new Ratelimit({
+      redis,
+      limiter: fixedWindow(1, 10),
+      prefix: 'test:callback:3',
+      onLimitExceeded: async (identifier) => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        notifications.push(`Notified ${identifier}`)
+      },
+    })
+
+    await ratelimit.limit('user-16')
+    await ratelimit.limit('user-16')
+
+    expect(notifications).toHaveLength(1)
+    expect(notifications[0]).toBe('Notified user-16')
+  })
+
+  test('should work with multiLimit', async () => {
+    const exceededIdentifiers: string[] = []
+
+    const ratelimit = new Ratelimit({
+      redis,
+      limiter: fixedWindow(1, 10),
+      prefix: 'test:callback:4',
+      onLimitExceeded: (identifier) => {
+        exceededIdentifiers.push(identifier)
+      },
+    })
+
+    await ratelimit.limit('user-17')
+    await ratelimit.limit('user-18')
+
+    await ratelimit.multiLimit(['user-17', 'user-18', 'user-19'])
+
+    expect(exceededIdentifiers).toContain('user-17')
+    expect(exceededIdentifiers).toContain('user-18')
+    expect(exceededIdentifiers).not.toContain('user-19')
+  })
+})

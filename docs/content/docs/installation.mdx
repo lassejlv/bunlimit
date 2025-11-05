@@ -1,0 +1,124 @@
+---
+title: Installation
+description: Get started with bunlimit
+icon: Download
+---
+
+## Installation
+
+Install bunlimit using your package manager:
+
+```bash
+bun add bunlimit
+```
+
+## Prerequisites
+
+bunlimit requires:
+
+- Bun runtime (or Node.js with appropriate adapter)
+- Redis server (version 7.2+)
+
+## Running Redis
+
+### Using Docker
+
+The easiest way to run Redis locally:
+
+```bash
+docker run -d --name redis -p 6379:6379 redis:latest
+```
+
+### Using Docker Compose
+
+Create a `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-data:
+```
+
+Then run:
+
+```bash
+docker-compose up -d
+```
+
+## Basic Setup
+
+### With Bun Redis
+
+```typescript
+import { RedisClient } from 'bun'
+import { Ratelimit, fixedWindow } from 'bunlimit'
+
+const redis = new RedisClient('redis://localhost:6379')
+
+const ratelimit = new Ratelimit({
+  redis,
+  limiter: fixedWindow(10, 60),
+})
+```
+
+### With ioredis
+
+```typescript
+import Redis from 'ioredis'
+import { Ratelimit, IoRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = new Redis()
+
+const ratelimit = new Ratelimit({
+  adapter: new IoRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+### With node-redis
+
+```typescript
+import { createClient } from 'redis'
+import { Ratelimit, NodeRedisAdapter, fixedWindow } from 'bunlimit'
+
+const redis = createClient()
+await redis.connect()
+
+const ratelimit = new Ratelimit({
+  adapter: new NodeRedisAdapter(redis),
+  limiter: fixedWindow(10, 60),
+})
+```
+
+## Environment Variables
+
+You can configure Redis connection using environment variables:
+
+```bash
+REDIS_URL=redis://localhost:6379
+```
+
+Then in your code:
+
+```typescript
+const redis = new RedisClient(process.env.REDIS_URL)
+```
+
+## Verification
+
+Test your setup:
+
+```typescript
+const result = await ratelimit.limit('test-user')
+console.log('Rate limit working:', result.success)
+```

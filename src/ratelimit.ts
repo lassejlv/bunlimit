@@ -10,6 +10,7 @@ export class Ratelimit {
   private limiter
   private prefix
   private analytics
+  private onLimitExceeded?: (identifier: string, response: RatelimitResponse) => void | Promise<void>
 
   constructor(config: RatelimitConfig) {
     if (!config.adapter && !config.redis) {
@@ -20,6 +21,7 @@ export class Ratelimit {
     this.limiter = config.limiter
     this.prefix = config.prefix ?? 'ratelimit'
     this.analytics = config.analytics ?? false
+    this.onLimitExceeded = config.onLimitExceeded
   }
 
   async limit(identifier: string): Promise<RatelimitResponse> {
@@ -41,6 +43,10 @@ export class Ratelimit {
 
     if (this.analytics) {
       await this.recordAnalytics(identifier, result.success)
+    }
+
+    if (!result.success && this.onLimitExceeded) {
+      await this.onLimitExceeded(identifier, result)
     }
 
     return result
