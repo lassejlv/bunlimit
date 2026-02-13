@@ -18,7 +18,7 @@ A simple and powerful rate limiting library for Bun, using Bun's native Redis cl
 bun add bunlimit
 ```
 
-Docs: https://bunlimit.lasse.team
+Docs: https://bunlimit.lassejlv.dk
 
 ## License
 
