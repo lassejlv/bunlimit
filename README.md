@@ -1,4 +1,4 @@
-# bunlimit
+# Bunlimit
 
 A simple and powerful rate limiting library for Bun, using Bun's native Redis client. Inspired by Upstash Ratelimit.
 
