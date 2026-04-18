@@ -1,6 +1,10 @@
 import { loader } from 'fumadocs-core/source';
+import { fromConfig } from 'fumadocs-mdx/runtime/vite.server';
 import * as icons from 'lucide-static';
-import { create, docs } from '@/.source';
+import { docs } from '@/.source';
+import type * as Config from '../../source.config';
+
+const create = fromConfig<typeof Config>();
 
 export const source = loader({
   source: await create.sourceAsync(docs.doc, docs.meta),
